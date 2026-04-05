@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Holiday Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, sans-serif;
+      background: #0f172a;
+      color: white;
+    }
+
+    .container {
+      padding: 20px;
+      padding-bottom: 80px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.05);
+      padding: 16px;
+      border-radius: 16px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(12px);
+    }
+
+    .person {
+      margin-bottom: 12px;
+    }
+
+    .bar {
+      height: 8px;
+      background: #1e293b;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+
+    .fill {
+      height: 100%;
+      background: #38bdf8;
+    }
+
+    .navbar {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      display: flex;
+      background: #020617;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .nav-btn {
+      flex: 1;
+      padding: 15px;
+      text-align: center;
+      cursor: pointer;
+      color: #94a3b8;
+    }
+
+    .nav-btn.active {
+      color: white;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border-radius: 10px;
+      border: none;
+      background: #38bdf8;
+      color: black;
+      font-weight: bold;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      border-radius: 8px;
+      border: none;
+    }
+
+    .error {
+      color: #f87171;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="overview" class="container"></div>
+<div id="payments" class="container" style="display:none"></div>
+
+<div class="navbar">
+  <div class="nav-btn active" onclick="switchTab('overview', this)">Overview</div>
+  <div class="nav-btn" onclick="switchTab('payments', this)">Payments</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getDatabase, ref, onValue, push, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAcHPJHJzCu2FjIEyxPhRoWUl8Pen9xKaQ",
+  authDomain: "paymenttracker-5a3ec.firebaseapp.com",
+  databaseURL: "https://paymenttracker-5a3ec-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "paymenttracker-5a3ec",
+  storageBucket: "paymenttracker-5a3ec.firebasestorage.app",
+  messagingSenderId: "174924063753",
+  appId: "1:174924063753:web:9436cbe9b3446c56dec4d8"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const peopleRef = ref(db, "people");
+const paymentsRef = ref(db, "payments");
+
+function switchTab(tab, el) {
+  document.getElementById('overview').style.display = tab === 'overview' ? 'block' : 'none';
+  document.getElementById('payments').style.display = tab === 'payments' ? 'block' : 'none';
+
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+window.switchTab = switchTab;
+
+function showError(msg) {
+  const el = document.getElementById("error");
+  if (!el) return;
+  el.innerText = msg;
+  setTimeout(() => el.innerText = "", 2500);
+}
+
+// Overview
+onValue(peopleRef, (snapshot) => {
+  const data = snapshot.val();
+  let total = 0;
+  let paid = 0;
+
+  let html = `<div class="card">`;
+
+  Object.values(data).forEach(p => {
+    total += p.total;
+    paid += p.paid;
+  });
+
+  const remaining = total - paid;
+  const daysLeft = Math.ceil((new Date("2026-05-21") - new Date()) / (1000*60*60*24));
+
+  html += `<h2>Holiday Overview</h2>
+           <p>Total: £${total.toFixed(2)}</p>
+           <p>Remaining: £${remaining.toFixed(2)}</p>
+           <p>${daysLeft} days left</p>
+           </div>`;
+
+  Object.keys(data).forEach(name => {
+    const p = data[name];
+    const percent = (p.paid / p.total) * 100;
+
+    html += `<div class="card person">
+      <h3>${name}</h3>
+      <p>£${p.paid} / £${p.total}</p>
+      <div class="bar"><div class="fill" style="width:${percent}%"></div></div>
+    </div>`;
+  });
+
+  document.getElementById('overview').innerHTML = html;
+});
+
+// Payments page
+onValue(paymentsRef, (snapshot) => {
+  const data = snapshot.val();
+
+  let html = `
+    <div class="card">
+      <h2>Make a Payment</h2>
+      <select id="person"></select>
+      <input id="amount" type="number" placeholder="Amount">
+      <div id="error" class="error"></div>
+      <button onclick="payWithMonzo()">Pay with Monzo</button>
+    </div>
+
+    <div class="card">
+      <h2>Payment History</h2>
+  `;
+
+  if (data) {
+    Object.values(data).reverse().forEach(p => {
+      html += `<p>${p.name} paid £${p.amount} on ${new Date(p.date).toLocaleString()}</p>`;
+    });
+  }
+
+  html += `</div>`;
+
+  document.getElementById('payments').innerHTML = html;
+
+  // populate dropdown
+  onValue(peopleRef, snap => {
+    const people = snap.val();
+    const select = document.getElementById('person');
+    if (!select) return;
+
+    select.innerHTML = "";
+    Object.keys(people).forEach(name => {
+      select.innerHTML += `<option>${name}</option>`;
+    });
+  }, {onlyOnce:true});
+});
+
+window.payWithMonzo = function () {
+  const name = document.getElementById('person').value;
+  let amountInput = document.getElementById('amount');
+  let amount = amountInput.value.trim();
+
+  // 🔴 VALIDATION
+  if (amount === "") {
+    showError("Please enter an amount");
+    amountInput.style.border = "2px solid red";
+    return;
+  }
+
+  if (isNaN(amount) || Number(amount) <= 0) {
+    showError("Enter a valid amount");
+    amountInput.style.border = "2px solid red";
+    return;
+  }
+
+  // ✅ Now it's safe
+  amount = parseFloat(amount);
+
+  // Save to Firebase
+  push(paymentsRef, {
+    name,
+    amount,
+    date: new Date().toISOString()
+  });
+
+  const personRef = ref(db, "people/" + name);
+  onValue(personRef, snap => {
+    const current = snap.val();
+    current.paid += amount;
+    set(personRef, current);
+  }, { onlyOnce: true });
+
+  // Open Monzo
+  const url = `https://monzo.me/louiseallan1/${amount.toFixed(2)}`;
+  window.open(url, "_blank");
+
+  // Reset UI
+  amountInput.value = "";
+  amountInput.style.border = "none";
+};
+
+</script>
+
+</body>
+</html>
