@@ -192,7 +192,7 @@ onValue(peopleRef, snap => {
     const p = data[name];
     html += `<div class="card">
       <h3>${name}</h3>
-      <p>£${p.paid} paid / £${p.total} total.  Remaining Balance: ${p.total - p.paid}</p>
+      <p>£${p.paid} paid / £${p.total} total.  Remaining Balance: ${(p.total - p.paid).toFixed(2)}</p>
       <div class="bar"><div class="fill" style="width:${(p.paid/p.total)*100}%"></div></div>
     </div>`;
   });
