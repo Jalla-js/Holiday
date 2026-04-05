@@ -4,12 +4,48 @@
   <meta charset="UTF-8">
   <title>Holiday Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="shortcut icon" href="icon-512.png" type="image/x-icon">
+  <link rel="icon" href="icon-512.png" type="image/x-icon">
+
   <style>
     body {
       margin: 0;
       font-family: -apple-system, sans-serif;
       background: #0f172a;
       color: white;
+    }
+
+    #splash {
+      position: fixed;
+      inset: 0;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      font-size: 24px;
+      transition: opacity 0.4s ease;
+    }
+
+    #splash.hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #offline-banner {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      background: #f87171;
+      text-align: center;
+      padding: 8px;
+      display: none;
+      z-index: 9998;
     }
 
     .container {
@@ -25,16 +61,11 @@
       backdrop-filter: blur(12px);
     }
 
-    .person {
-      margin-bottom: 12px;
-    }
-
     .bar {
       height: 8px;
       background: #1e293b;
       border-radius: 10px;
       overflow: hidden;
-      margin-top: 6px;
     }
 
     .fill {
@@ -48,7 +79,6 @@
       width: 100%;
       display: flex;
       background: #020617;
-      border-top: 1px solid rgba(255,255,255,0.1);
     }
 
     .nav-btn {
@@ -63,33 +93,24 @@
       color: white;
     }
 
-    button {
+    button, input, select {
       width: 100%;
-      padding: 12px;
       margin-top: 10px;
-      border-radius: 10px;
-      border: none;
-      background: #38bdf8;
-      color: black;
-      font-weight: bold;
-    }
-
-    input, select {
-      width: 100%;
       padding: 10px;
-      margin-top: 8px;
       border-radius: 8px;
       border: none;
     }
 
     .error {
       color: #f87171;
-      margin-top: 8px;
       font-size: 14px;
     }
   </style>
 </head>
 <body>
+
+<div id="splash">🌴 Holiday Tracker</div>
+<div id="offline-banner">⚠️ You are offline</div>
 
 <div id="overview" class="container"></div>
 <div id="payments" class="container" style="display:none"></div>
@@ -104,7 +125,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getDatabase, ref, onValue, push, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAcHPJHJzCu2FjIEyxPhRoWUl8Pen9xKaQ",
+  apiKey: "YOUR_KEY",
   authDomain: "paymenttracker-5a3ec.firebaseapp.com",
   databaseURL: "https://paymenttracker-5a3ec-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "paymenttracker-5a3ec",
@@ -120,9 +141,8 @@ const peopleRef = ref(db, "people");
 const paymentsRef = ref(db, "payments");
 
 function switchTab(tab, el) {
-  document.getElementById('overview').style.display = tab === 'overview' ? 'block' : 'none';
-  document.getElementById('payments').style.display = tab === 'payments' ? 'block' : 'none';
-
+  overview.style.display = tab === 'overview' ? 'block' : 'none';
+  payments.style.display = tab === 'payments' ? 'block' : 'none';
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
 }
@@ -135,109 +155,98 @@ function showError(msg) {
   setTimeout(() => el.innerText = "", 2500);
 }
 
-// Overview
-onValue(peopleRef, (snapshot) => {
-  const data = snapshot.val();
-  let total = 0;
-  let paid = 0;
+// Splash
+window.addEventListener("load", () => {
+  setTimeout(() => {
+    splash.classList.add("hide");
+    setTimeout(() => splash.remove(), 400);
+  }, 600);
+});
 
-  let html = `<div class="card">`;
+// Offline banner
+function updateOnlineStatus() {
+  const offlineBanner = document.getElementById("offline-banner");
+  offlineBanner.style.display = navigator.onLine ? "none" : "block";
+}
+window.addEventListener("online", updateOnlineStatus);
+window.addEventListener("offline", updateOnlineStatus);
+updateOnlineStatus();
+
+// Overview
+onValue(peopleRef, snap => {
+  const data = snap.val();
+  let total = 0, paid = 0;
 
   Object.values(data).forEach(p => {
     total += p.total;
     paid += p.paid;
   });
 
-  const remaining = total - paid;
-  const daysLeft = Math.ceil((new Date("2026-05-21") - new Date()) / (1000*60*60*24));
-
-  html += `<h2>Holiday Overview</h2>
-           <p>Total: £${total.toFixed(2)}</p>
-           <p>Remaining: £${remaining.toFixed(2)}</p>
-           <p>${daysLeft} days left</p>
-           </div>`;
+  let html = `<div class="card">
+    <h2>Holiday Overview</h2>
+    <p>Total: £${total.toFixed(2)}</p>
+    <p>Remaining: £${(total-paid).toFixed(2)}</p>
+  </div>`;
 
   Object.keys(data).forEach(name => {
     const p = data[name];
-    const percent = (p.paid / p.total) * 100;
-
-    html += `<div class="card person">
+    html += `<div class="card">
       <h3>${name}</h3>
       <p>£${p.paid} / £${p.total}</p>
-      <div class="bar"><div class="fill" style="width:${percent}%"></div></div>
+      <div class="bar"><div class="fill" style="width:${(p.paid/p.total)*100}%"></div></div>
     </div>`;
   });
 
-  document.getElementById('overview').innerHTML = html;
+  overview.innerHTML = html;
 });
 
-// Payments page
-onValue(paymentsRef, (snapshot) => {
-  const data = snapshot.val();
+// Payments
+onValue(paymentsRef, snap => {
+  const data = snap.val();
 
   let html = `
-    <div class="card">
-      <h2>Make a Payment</h2>
-      <select id="person"></select>
-      <input id="amount" type="number" placeholder="Amount">
-      <div id="error" class="error"></div>
-      <button onclick="payWithMonzo()">Pay with Monzo</button>
-    </div>
+  <div class="card">
+    <h2>Make a Payment</h2>
+    <select id="person"></select>
+    <input id="amount" placeholder="Amount">
+    <div id="error" class="error"></div>
+    <button onclick="payWithMonzo()">Pay with Monzo</button>
+  </div>
 
-    <div class="card">
-      <h2>Payment History</h2>
-  `;
+  <div class="card"><h2>History</h2>`;
 
   if (data) {
     Object.values(data).reverse().forEach(p => {
-      html += `<p>${p.name} paid £${p.amount} on ${new Date(p.date).toLocaleString()}</p>`;
+      html += `<p>${p.name} paid £${p.amount} (${new Date(p.date).toLocaleString()})</p>`;
     });
   }
 
-  html += `</div>`;
+  html += "</div>";
+  payments.innerHTML = html;
 
-  document.getElementById('payments').innerHTML = html;
-
-  // populate dropdown
-  onValue(peopleRef, snap => {
-    const people = snap.val();
-    const select = document.getElementById('person');
-    if (!select) return;
-
+  onValue(peopleRef, s => {
+    const select = document.getElementById("person");
     select.innerHTML = "";
-    Object.keys(people).forEach(name => {
-      select.innerHTML += `<option>${name}</option>`;
+    Object.keys(s.val()).forEach(n => {
+      select.innerHTML += `<option>${n}</option>`;
     });
   }, {onlyOnce:true});
 });
 
 window.payWithMonzo = function () {
   const name = document.getElementById('person').value;
-  let amountInput = document.getElementById('amount');
-  let amount = amountInput.value.trim();
+  let input = document.getElementById('amount');
+  let amount = input.value.trim();
 
-  // 🔴 VALIDATION
-  if (amount === "") {
-    showError("Please enter an amount");
-    amountInput.style.border = "2px solid red";
+  if (!amount || isNaN(amount) || Number(amount) <= 0) {
+    showError("Enter valid amount");
+    input.style.border = "2px solid red";
     return;
   }
 
-  if (isNaN(amount) || Number(amount) <= 0) {
-    showError("Enter a valid amount");
-    amountInput.style.border = "2px solid red";
-    return;
-  }
-
-  // ✅ Now it's safe
   amount = parseFloat(amount);
 
-  // Save to Firebase
-  push(paymentsRef, {
-    name,
-    amount,
-    date: new Date().toISOString()
-  });
+  push(paymentsRef, { name, amount, date: new Date().toISOString() });
 
   const personRef = ref(db, "people/" + name);
   onValue(personRef, snap => {
@@ -246,15 +255,16 @@ window.payWithMonzo = function () {
     set(personRef, current);
   }, { onlyOnce: true });
 
-  // Open Monzo
-  const url = `https://monzo.me/louiseallan1/${amount.toFixed(2)}`;
-  window.open(url, "_blank");
+  window.open(`https://monzo.me/louiseallan1/${amount.toFixed(2)}`, "_blank");
 
-  // Reset UI
-  amountInput.value = "";
-  amountInput.style.border = "none";
+  input.value = "";
+  input.style.border = "none";
 };
 
+// Register SW
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
 </script>
 
 </body>
